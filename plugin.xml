@@ -1,0 +1,89 @@
+<?xml version='1.0' encoding='utf-8'?>
+<plugin id="com.dixtra.cordova.inAppUpdate" xmlns="http://apache.org/cordova/ns/plugins/1.0" version="0.0.1">>
+    <name>InAppUpdate</name>
+    <description>
+
+    </description>
+    <author email="luis.cal@dixtra.co" href="http://dixtra.co">
+        Luis Cal
+    </author>
+
+    <engines>
+        <engine name="cordova" version=">=3.1.0" />
+    </engines>
+
+    <js-module src="www/InAppUpdate.js" name="InAppUpdate">
+        <clobbers target="cordova.plugins.InAppUpdate" />
+    </js-module>
+
+    <preference name="CHECK_URL" />
+    <preference name="CHECK_ATTR" />
+    <preference name="DOWNLOAD_URL" />
+    <preference name="DOWNLOAD_FILENAME" />
+
+    <platform name="ios">
+        <config-file target="config.xml" parent="/*">
+            <feature name="InAppUpdate">
+                <param name="ios-package" value="InAppUpdatePlugin" />
+            </feature>
+        </config-file>
+
+        <config-file target="*-Info.plist" parent="CheckUrl">
+            <string>$CHECK_URL</string>
+        </config-file>
+        <config-file target="*-Info.plist" parent="CheckAttr">
+            <string>$CHECK_ATTR</string>
+        </config-file>
+        <config-file target="*-Info.plist" parent="DownloadUrl">
+            <string>$DOWNLOAD_URL</string>
+        </config-file>
+        <config-file target="*-Info.plist" parent="DownloadFilename">
+            <string>$DOWNLOAD_FILENAME</string>
+        </config-file>
+
+        <header-file src="src/ios/InAppUpdatePlugin.h" />
+        <source-file src="src/ios/InAppUpdatePlugin.m" />
+
+        <header-file src="src/ios/Reachability.h" />
+        <source-file src="src/ios/Reachability.m" />
+
+        <header-file src="src/ios/ZipArchive.h" />
+        <source-file src="src/ios/ZipArchive.m" />
+
+        <header-file src="src/ios/minizip/crypt.h" />
+
+        <header-file src="src/ios/minizip/ioapi.h" />
+        <source-file src="src/ios/minizip/ioapi.c" />
+
+        <header-file src="src/ios/minizip/mztools.h" />
+        <source-file src="src/ios/minizip/mztools.c" />
+
+        <header-file src="src/ios/minizip/unzip.h" />
+        <source-file src="src/ios/minizip/unzip.c" />
+
+        <header-file src="src/ios/minizip/zip.h" />
+        <source-file src="src/ios/minizip/zip.c" />
+
+        <framework src="libz.tbd" />
+    </platform>
+
+    <platform name="android">
+        <config-file target="res/xml/config.xml" parent="/*">
+            <feature name="InAppUpdate" >
+                <param name="android-package" value="com.dixtra.cordova.inAppUpdate.InAppUpdatePlugin"/>
+            </feature>
+        </config-file>
+
+        <config-file target="res/values/strings.xml" parent="/*">
+            <string name="check_url">$CHECK_URL</string>
+            <string name="check_attr">$CHECK_ATTR</string>
+            <string name="download_url">$DOWNLOAD_URL</string>
+            <string name="download_filename">$DOWNLOAD_FILENAME</string>
+        </config-file>
+
+        <config-file target="AndroidManifest.xml" parent="/manifest">
+        </config-file>
+
+        <source-file src="src/android/InAppUpdatePlugin.java" target-dir="src/com/dixtra/cordova/inAppUpdate/" />
+    </platform>
+</plugin>
