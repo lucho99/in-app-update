@@ -1,6 +1,6 @@
 function InAppUpdate () {}
 
-InAppUpdate.prototype.check = function(success, error) {
+InAppUpdate.prototype.download = function(fileURL, fileChecksum, success, error) {
     cordova.exec(function (response) {
         var data;
         try {
@@ -11,21 +11,7 @@ InAppUpdate.prototype.check = function(success, error) {
         } else {
             success(response);
         }
-    }, error, 'InAppUpdate', 'check', []);
-};
-
-InAppUpdate.prototype.download = function(success, error) {
-    cordova.exec(function (response) {
-        var data;
-        try {
-            data = JSON.parse(response);
-        } catch (e) {}
-        if (data) {
-            success(data);
-        } else {
-            success(response);
-        }
-    }, error, 'InAppUpdate', 'download', []);
+    }, error, 'InAppUpdate', 'download', [fileURL, fileChecksum]);
 };
 
 InAppUpdate.prototype.install = function(success, error) {

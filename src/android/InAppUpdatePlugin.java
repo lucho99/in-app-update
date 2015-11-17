@@ -13,6 +13,8 @@ import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+
+import java.security.MessageDigest;
 import java.util.regex.*;
 
 import java.net.URL;
@@ -33,7 +35,8 @@ import java.util.zip.ZipEntry;
 public class InAppUpdatePlugin extends CordovaPlugin {
 
     public static final String LOG_TAG = "InAppUpdatePlugin";
-    public static final String ACTION_CHECK = "check";
+    public static final String FILE_NAME = "www";
+    public static final String FILE_EXTENSION = "zip";
     public static final String ACTION_DOWNLOAD = "download";
     public static final String ACTION_INSTALL = "install";
     public static final String ACTION_APPLY_UPDATE = "applyUpdate";
@@ -50,132 +53,129 @@ public class InAppUpdatePlugin extends CordovaPlugin {
     }
 
     @Override
-    public boolean execute(final String action, final JSONArray data, final CallbackContext callbackContext) {
+    public boolean execute(String action, JSONArray args, CallbackContext callbackContext) throws JSONException {
         Log.v(LOG_TAG, "execute: action=" + action);
         gWebView = this.webView;
 
-        if (ACTION_CHECK.equals(action)) {
-            cordova.getThreadPool().execute(new Runnable() {
-                public void run() {
-                    checkForUpdate(callbackContext);
-                }
-            });
-        } else if (ACTION_DOWNLOAD.equals(action)) {
-            cordova.getThreadPool().execute(new Runnable() {
-                public void run() {
-                    downloadUpdate(callbackContext);
-                }
-            });
-        } else if (ACTION_INSTALL.equals(action)) {
-            cordova.getThreadPool().execute(new Runnable() {
-                public void run() {
-                    installUpdate(callbackContext);
-                }
-            });
-        } else if (ACTION_APPLY_UPDATE.equals(action)) {
-            cordova.getThreadPool().execute(new Runnable() {
-                public void run() {
-                    applyUpdate();
-                }
-            });
-        } else {
-            Log.e(LOG_TAG, "Invalid action : " + action);
-            callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.INVALID_ACTION));
-            return false;
+        if (action.equals(ACTION_DOWNLOAD)) {
+            this.downloadUpdate(args.getString(0), args.getString(1), callbackContext);
+            return true;
+        }
+        if (action.equals(ACTION_INSTALL)) {
+            this.installUpdate(callbackContext);
+            return true;
+        }
+        if (action.equals(ACTION_APPLY_UPDATE)) {
+            this.applyUpdate();
+            return true;
         }
 
-        return true;
+        Log.e(LOG_TAG, "Invalid action : " + action);
+        callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.INVALID_ACTION));
+        return false;
     }
 
-    private void checkForUpdate(final CallbackContext callbackContext) {
-        boolean _hasUpdates = hasUpdates();
-        boolean _hasWifiConnection = hasWifiConnection();
-        String jsonResult;
+    private void downloadUpdate(final String fileURL, final String fileChecksum, final CallbackContext callbackContext) {
+        Log.v(LOG_TAG, "Download URL: " + fileURL);
+        cordova.getThreadPool().execute(new Runnable() {
+            public void run() {
+                boolean _hasWifiConnection = hasWifiConnection();
+                String _fileName = FILE_NAME + "." + FILE_EXTENSION;
 
-        if (_hasUpdates && _hasWifiConnection) {
-            jsonResult = "{\"hasUpdates\": true}";
-        } else {
-            jsonResult = "{\"hasUpdates\": false}";
-        }
+                if (_hasWifiConnection) {
+                    try {
+                        URL url = new URL(fileURL);
+                        HttpURLConnection httpConn = (HttpURLConnection) url.openConnection();
+                        int responseCode = httpConn.getResponseCode();
 
-        callbackContext.success(jsonResult);
-    }
+                        // always check HTTP response code first
+                        if (responseCode == HttpURLConnection.HTTP_OK) {
+                            // opens input stream from the HTTP connection
+                            InputStream inputStream = httpConn.getInputStream();
 
-    private void downloadUpdate(final CallbackContext callbackContext) {
-        String downloadUrl = getResString("download_url");
-        String downloadFilename = getResString("download_filename");
-        String _URL = downloadUrl + "/" + downloadFilename;
+                            Context context = getApplicationContext();
+                            String dataDir = context.getPackageManager().getPackageInfo(context.getPackageName(), 0)
+                                    .applicationInfo.dataDir;
+                            String saveFilePath = dataDir + File.separator + _fileName;
 
-        Log.v(LOG_TAG, "Download URL: " + _URL);
+                            // opens an output stream to save into file
+                            FileOutputStream outputStream = new FileOutputStream(saveFilePath);
 
-        try {
-            URL url = new URL(_URL);
-            HttpURLConnection httpConn = (HttpURLConnection) url.openConnection();
-            int responseCode = httpConn.getResponseCode();
+                            int bytesRead = -1;
+                            byte[] buffer = new byte[BUFFER_SIZE];
+                            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                                outputStream.write(buffer, 0, bytesRead);
+                            }
 
-            // always check HTTP response code first
-            if (responseCode == HttpURLConnection.HTTP_OK) {
-                // opens input stream from the HTTP connection
-                InputStream inputStream = httpConn.getInputStream();
+                            outputStream.close();
+                            inputStream.close();
 
-                Context context = getApplicationContext();
-                String dataDir = context.getPackageManager().getPackageInfo(context.getPackageName(), 0)
-                        .applicationInfo.dataDir;
-                String saveFilePath = dataDir + File.separator + downloadFilename;
+                            String _checksum = checksum(saveFilePath);
+                            if (_checksum.toUpperCase().equals(fileChecksum.toUpperCase())) {
+                                callbackContext.success("{\"downloaded\": true}");
+                                Log.v(LOG_TAG, "Downloaded file: " + _fileName);
+                            } else {
+                                callbackContext.success("{\"downloaded\": false, \"message\":\"Not a valid file.\"}");
+                            }
+                        } else {
+                            callbackContext.error("{\"downloaded\": false}");
+                        }
 
-                // opens an output stream to save into file
-                FileOutputStream outputStream = new FileOutputStream(saveFilePath);
-
-                int bytesRead = -1;
-                byte[] buffer = new byte[BUFFER_SIZE];
-                while ((bytesRead = inputStream.read(buffer)) != -1) {
-                    outputStream.write(buffer, 0, bytesRead);
+                        httpConn.disconnect();
+                    } catch (IOException e) {
+                        Log.e(LOG_TAG, "Error: " + e.getMessage());
+                    } catch (PackageManager.NameNotFoundException e) {
+                        e.printStackTrace();
+                    }
+                } else {
+                    callbackContext.error("{\"downloaded\": false, \"message\":\"No Wifi connection available.\"}");
                 }
-
-                outputStream.close();
-                inputStream.close();
-
-                callbackContext.success("{\"downloaded\": true}");
-                Log.v(LOG_TAG, "Downloaded file: " + downloadFilename);
-            } else {
-                callbackContext.error("{\"downloaded\": false}");
             }
-
-            httpConn.disconnect();
-        } catch (IOException e) {
-            Log.e(LOG_TAG, "Error: " + e.getMessage());
-        } catch (PackageManager.NameNotFoundException e) {
-            e.printStackTrace();
-        }
+        });
     }
 
     private void installUpdate(final CallbackContext callbackContext) {
-        Context context = getApplicationContext();
+        cordova.getThreadPool().execute(new Runnable() {
+            public void run() {
+                Context context = getApplicationContext();
 
+                try {
+                    String _fileName = FILE_NAME + "." + FILE_EXTENSION;
+                    String path = context.getPackageManager().getPackageInfo(context.getPackageName(), 0)
+                            .applicationInfo.dataDir;
+
+                    File dir = new File(path + File.separator + "www");
+                    if (dir.isDirectory()) {
+                        deleteFolder(path + File.separator + "www");
+                    }
+
+                    boolean isUnpacked = unpackZip(path + "/" + _fileName, path);
+
+                    if (isUnpacked) {
+                        File file = new File(path, _fileName);
+                        boolean deleted = file.delete();
+
+                        if (deleted) {
+                            callbackContext.success("{\"installed\": true}");
+                        } else {
+                            callbackContext.error("{\"installed\": false}");
+                        }
+                    } else {
+                        callbackContext.error("{\"installed\": false}");
+                    }
+                } catch (PackageManager.NameNotFoundException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+    }
+
+    private void applyUpdate() {
+        Context context = getApplicationContext();
         try {
-            String downloadFilename = getResString("download_filename");
             String path = context.getPackageManager().getPackageInfo(context.getPackageName(), 0)
                     .applicationInfo.dataDir;
-
-            File dir = new File(path + File.separator + "www");
-            if (dir.isDirectory()) {
-                deleteFolder(path + File.separator + "www");
-            }
-
-            boolean isUnpacked = unpackZip(path + "/" + downloadFilename, path);
-
-            if (isUnpacked) {
-                File file = new File(path, downloadFilename);
-                boolean deleted = file.delete();
-
-                if (deleted) {
-                    callbackContext.success("{\"installed\": true}");
-                } else {
-                    callbackContext.error("{\"installed\": false}");
-                }
-            } else {
-                callbackContext.error("{\"installed\": false}");
-            }
+            gWebView.loadUrl("file:///" + path + "/www/index.html");
         } catch (PackageManager.NameNotFoundException e) {
             e.printStackTrace();
         }
@@ -196,67 +196,11 @@ public class InAppUpdatePlugin extends CordovaPlugin {
         }
     }
 
-    private void applyUpdate() {
-        Context context = getApplicationContext();
-        try {
-            String path = context.getPackageManager().getPackageInfo(context.getPackageName(), 0)
-                    .applicationInfo.dataDir;
-            gWebView.loadUrl("file:///" + path + "/www/index.html");
-        } catch (PackageManager.NameNotFoundException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private boolean hasUpdates() {
-        String checkUrl = getResString("check_url");
-        String checkAttr = getResString("check_attr");
-
-        try {
-            URL url = new URL(checkUrl);
-            HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
-            try {
-                InputStream in = new BufferedInputStream(urlConnection.getInputStream());
-                String result = getStringFromInputStream(in);
-
-                try {
-                    JSONObject json = new JSONObject(result);
-
-                    Pattern patternNumber = Pattern.compile("0|1");
-                    Pattern patternBoolean = Pattern.compile("true|false");
-                    
-                    Matcher matcherNumber = patternNumber.matcher(json.getString(checkAttr));
-                    Matcher matcherBoolean = patternBoolean.matcher(json.getString(checkAttr));
-
-                    if (matcherNumber.matches()) {
-                        return Integer.parseInt(json.getString(checkAttr)) == 1 ? true : false;
-                    }
-                    if (matcherBoolean.matches()) {
-                        return json.getString(checkAttr) == "true" ? true : false;
-                    }
-                } catch (JSONException e) {
-                    Log.e(LOG_TAG, "Error parsing data " + e.toString());
-                }
-            } catch (IOException e) {
-            } finally {
-                urlConnection.disconnect();
-            }
-        } catch (IOException e) {
-            return false;
-        }
-
-        return false;
-    }
-
     private boolean hasWifiConnection() {
-        ConnectivityManager connManager = (ConnectivityManager) getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+        ConnectivityManager connManager = (ConnectivityManager) getApplicationContext()
+                .getSystemService(Context.CONNECTIVITY_SERVICE);
         NetworkInfo wifi = connManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
         return wifi.isConnected();
-    }
-
-    private String getResString(String identifier) {
-        int resId = cordova.getActivity().getResources().getIdentifier(identifier, "string",
-                cordova.getActivity().getPackageName());
-        return cordova.getActivity().getString(resId);
     }
 
     // convert InputStream to String
@@ -325,5 +269,38 @@ public class InAppUpdatePlugin extends CordovaPlugin {
         }
 
         return true;
+    }
+
+    public static String checksum(String filePath) {
+        InputStream inputStream = null;
+        try {
+            inputStream = new FileInputStream(filePath);
+            byte[] buffer = new byte[1024];
+            MessageDigest digest = MessageDigest.getInstance("MD5");
+            int numRead = 0;
+            while (numRead != -1) {
+                numRead = inputStream.read(buffer);
+                if (numRead > 0)
+                    digest.update(buffer, 0, numRead);
+            }
+            byte [] md5Bytes = digest.digest();
+            return convertHashToString(md5Bytes);
+        } catch (Exception e) {
+            return null;
+        } finally {
+            if (inputStream != null) {
+                try {
+                    inputStream.close();
+                } catch (Exception e) { }
+            }
+        }
+    }
+
+    private static String convertHashToString(byte[] md5Bytes) {
+        String returnVal = "";
+        for (int i = 0; i < md5Bytes.length; i++) {
+            returnVal += Integer.toString(( md5Bytes[i] & 0xff ) + 0x100, 16).substring(1);
+        }
+        return returnVal.toUpperCase();
     }
 }

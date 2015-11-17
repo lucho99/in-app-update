@@ -6,7 +6,6 @@
 
 @interface InAppUpdatePlugin : CDVPlugin {}
 
-- (void) check: (CDVInvokedUrlCommand*)command;
 - (void) download: (CDVInvokedUrlCommand*)command;
 - (void) install: (CDVInvokedUrlCommand*)command;
 - (void) applyUpdate:(CDVInvokedUrlCommand*)command;
